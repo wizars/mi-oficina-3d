@@ -77,6 +77,43 @@
     .touch-keys { display: none; }
     body.touch .kb-keys { display: none; }
     body.touch .touch-keys { display: grid; }
+
+    /* ===== Vida, arsenal y muerte ===== */
+    #weaponStrip { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%);
+      z-index: 6; display: none; gap: 6px; }
+    body.playing #weaponStrip { display: flex; }
+    .wchip { pointer-events: auto; touch-action: none; min-width: 44px; padding: 5px 7px; border-radius: 10px;
+      background: rgba(20,24,32,.62); border: 2px solid rgba(180,200,230,.28); color: #cfe0ff;
+      font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; cursor: pointer; }
+    .wchip .wi { font-size: 19px; display: block; }
+    .wchip .wn { display: block; font-size: 9px; opacity: .8; }
+    .wchip .wk { display: block; font-size: 8px; opacity: .55; }
+    .wchip.sel { border-color: #7fd0ff; background: rgba(55,110,170,.6); color: #fff; }
+    .wchip.cool { opacity: .42; }
+
+    #playerHud { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+      z-index: 5; display: none; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
+    body.playing #playerHud { display: flex; }
+    #hpLabel { font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 3px #000; letter-spacing: 1px; }
+    #hpBar { width: min(280px, 64vw); height: 15px; background: rgba(0,0,0,.55);
+      border: 1px solid rgba(255,255,255,.35); border-radius: 8px; overflow: hidden; }
+    #hpFill { height: 100%; width: 100%; background: #5bd75b; transition: width .15s, background .2s; }
+
+    #damageFlash { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0; transition: opacity .4s;
+      background: radial-gradient(ellipse at center, transparent 42%, rgba(190,0,0,.6) 100%); }
+
+    #dead { position: fixed; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center;
+      background: rgba(20,4,4,.84); color: #fff; text-align: center; padding: 24px; }
+    #dead.show { display: flex; }
+    #dead .dpanel { background: #2a1518; border: 1px solid #6a2a2a; border-radius: 16px; padding: 30px 34px; max-width: 420px; }
+    #dead h1 { color: #ff6b5e; font-size: 28px; margin-bottom: 8px; }
+    #dead .dsub { color: #e0a0a0; font-size: 14px; margin-bottom: 22px; }
+    #respawnBtn { display: inline-block; background: #3b82f6; padding: 12px 28px; border-radius: 10px; font-weight: 600;
+      font-size: 15px; cursor: pointer; pointer-events: auto; }
+    #respawnBtn:hover { background: #2f6fde; }
+
+    /* botón de disparo móvil (sustituye a los de puño/látigo) */
+    #bFire { width: 88px; height: 88px; font-size: 34px; background: rgba(70,110,170,.55); border-color: rgba(150,190,255,.6); }
   </style>
 </head>
 <body>
@@ -85,6 +122,18 @@
   <div id="hud">👊 Puño — 2 puñetazos · pulsa <b style="font-family:monospace">Esc</b> para soltar el ratón</div>
 
   <div id="toast"></div>
+
+  <!-- Barra de armas (arriba) y vida del jugador (abajo) -->
+  <div id="weaponStrip"></div>
+  <div id="playerHud"><div id="hpLabel">VIDA 100</div><div id="hpBar"><div id="hpFill"></div></div></div>
+  <div id="damageFlash"></div>
+
+  <!-- Pantalla de muerte -->
+  <div id="dead"><div class="dpanel">
+    <h1>☠ Has muerto</h1>
+    <div class="dsub" id="deadSub"></div>
+    <span id="respawnBtn">↻ Reaparecer</span>
+  </div></div>
 
   <!-- Controles táctiles (solo móvil) -->
   <div id="mobileUI">
@@ -95,8 +144,7 @@
       <div class="msbtn" id="bDown">⬇️</div>
     </div>
     <div id="actions">
-      <div class="mbtn" id="bPunch">👊</div>
-      <div class="mbtn" id="bWhip">🔴</div>
+      <div class="mbtn" id="bFire">👊</div>
     </div>
   </div>
 
@@ -134,6 +182,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=17"></script>
 </body>
 </html>

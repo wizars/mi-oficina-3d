@@ -72,9 +72,43 @@ const rayFloor = new THREE.Raycaster();
 const rayWall  = new THREE.Raycaster();
 rayWall.far = 1.0;
 const rayPunch = new THREE.Raycaster();
-const PUNCH_REACH = 3.6;   // alcance del puñetazo (m)
-const WHIP_REACH = 6.5;    // alcance del látigo (m)
-const HP_MAX = 2;          // 2 puñetazos (1 de daño) o 1 latigazo (2 de daño)
+
+// ── ARSENAL DEL JUGADOR ─────────────────────────────────────────────
+// dmg = puntos de vida que resta a un monigote (vida máxima 100).
+const WEAPONS = {
+  punch:   { name: 'Puño',         icon: '👊', dmg: 20,  reach: 3.4, cd: 0.32, kind: 'melee'   },
+  whip:    { name: 'Látigo',       icon: '🔴', dmg: 42,  reach: 6.5, cd: 0.42, kind: 'melee'   },
+  shotgun: { name: 'Escopeta',     icon: '🔫', dmg: 16,  reach: 16,  cd: 0.75, kind: 'shotgun', pellets: 8 }, // ≈128 a quemarropa
+  rocket:  { name: 'Lanzacohetes', icon: '🚀', dmg: 150, reach: 4.5, cd: 1.5,  kind: 'rocket',  splash: 4.5 },
+  grenade: { name: 'Granada',      icon: '💣', dmg: 110, reach: 4.0, cd: 1.3,  kind: 'grenade', splash: 4.0 },
+};
+const WEAPON_ORDER = ['punch', 'whip', 'shotgun', 'rocket', 'grenade'];
+let currentWeapon = 'punch';
+const weaponCd = {};                 // enfriamiento por arma (s)
+const projectiles = [];              // cohetes y granadas en vuelo
+const explosions = [];               // efectos de explosión
+
+// Compat: alcances antiguos
+const PUNCH_REACH = WEAPONS.punch.reach;
+const WHIP_REACH  = WEAPONS.whip.reach;
+
+// ── VIDA ────────────────────────────────────────────────────────────
+const MONI_HP = 100;                 // vida de cada monigote
+const PLAYER_HP_MAX = 100;           // vida del jugador
+let playerHP = PLAYER_HP_MAX;
+let playerDead = false;
+
+// ── ARMAS DE LOS MONIGOTES (daño que TE hacen) ──────────────────────
+const NPC_WEAPONS = {
+  punch: { name: 'puño',   reach: 1.7, dmg: 6,  cd: 2.2, wind: 0.34 },
+  whip:  { name: 'látigo', reach: 3.6, dmg: 9,  cd: 2.6, wind: 0.44 },
+  bat:   { name: 'bate',   reach: 2.2, dmg: 13, cd: 2.9, wind: 0.40 },
+};
+const NPC_WEAPON_KEYS = ['punch', 'whip', 'bat'];
+const MAX_ATTACKERS  = 2;            // como mucho 2 monigotes atacándote a la vez
+const AGGRO_RADIUS   = 9;            // se fijan en ti si estás a menos de 9 m
+const DEAGGRO_RADIUS = 16;           // te pierden si te alejas más de 16 m
+const _pv = new THREE.Vector3();     // temporal para cálculos de proyectiles
 
 // ---------- Carga de las 8 teselas ----------
 const bar = document.querySelector('#bar > i');
@@ -230,6 +264,27 @@ function addChestLogo(root, file, w, h) {
 }
 
 // Crea un monigote articulado (origen en los PIES, y=0)
+// Barra de vida flotante (sprite que siempre mira a la cámara) para un monigote
+function makeHpBar() {
+  const cv = document.createElement('canvas'); cv.width = 96; cv.height = 14;
+  const ctx = cv.getContext('2d');
+  const tex = new THREE.CanvasTexture(cv);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sprite.scale.set(0.7, 0.1, 1);
+  sprite.renderOrder = 999;
+  sprite.visible = false;
+  const draw = (frac) => {
+    frac = Math.max(0, Math.min(1, frac));
+    ctx.clearRect(0, 0, 96, 14);
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, 96, 14);
+    ctx.fillStyle = frac > 0.5 ? '#5bd75b' : frac > 0.22 ? '#e8c14a' : '#e0584a';
+    ctx.fillRect(2, 2, frac * 92, 10);
+    tex.needsUpdate = true;
+  };
+  draw(1);
+  return { sprite, draw };
+}
+
 function spawnMonigote(i) {
   const key = CHAR_KEYS[i % CHAR_KEYS.length];
   const char = CARAS[key];
@@ -317,16 +372,29 @@ function spawnMonigote(i) {
   if (key === 'jorge') addChestLogo(root, 'guinness.png', 0.32, 0.20);  // logo de Guinness
   if (key === 'raul')  addChestLogo(root, 'arekson.png', 0.34, 0.20);   // logo de arekson group
 
+  // Arma del monigote: puño / látigo / bate (repartidas entre los 8)
+  const npcWeapon = NPC_WEAPON_KEYS[i % NPC_WEAPON_KEYS.length];
+  if (npcWeapon === 'bat') {
+    // bate de madera en la mano derecha
+    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x7a4a22, roughness: 0.9, flatShading: true }));
+    bat.position.set(0, -0.42, 0.05); armR.add(bat);
+  }
+
   const m = {
     root, legL, legR, armL, armR, head, key,
     name: char.name,
     state: 'walk',
-    hp: HP_MAX,
+    hp: MONI_HP, maxHp: MONI_HP,
+    weapon: npcWeapon,
+    aggro: false, atkCd: 1 + Math.random() * 3, atkAnim: 0, struck: false,
     cigStick, cigEmber, cigBurn: 0, immortal: false,
     target: randomFloorPoint(),
     phase: Math.random() * 6.28,
     vel: new THREE.Vector3(),
   };
+  m.hpBar = makeHpBar();
+  scene.add(m.hpBar.sprite);
 
   // marcar las mallas para detectar golpes
   const parts = [torso, head, armL.children[0], armR.children[0], legL.children[0], legR.children[0]];
@@ -348,7 +416,14 @@ function groundMonigote(m) {
 }
 
 function updateMonigotes(dt) {
+  const ppos = camera.position;
+  // contar cuántos te están atacando ahora mismo (para no saturarte)
+  let attackers = 0;
+  for (const m of monigotes) if (m.aggro && m.state === 'walk') attackers++;
+
   for (const m of monigotes) {
+    updateHpBar(m);
+
     if (m.state === 'dead') continue;                 // peso muerto: se queda tirado, no se mueve
     if (m.state === 'hit') { updateHit(m, dt); continue; }
 
@@ -366,35 +441,109 @@ function updateMonigotes(dt) {
       }
     }
 
-    // --- caminar hacia el destino ---
-    if (!m.target) { m.target = randomFloorPoint(); continue; }
-    const dx = m.target.x - m.root.position.x;
-    const dz = m.target.z - m.root.position.z;
-    const dist = Math.hypot(dx, dz);
+    if (m.atkCd > 0) m.atkCd -= dt;
+
+    // distancia al jugador (en horizontal)
+    const dpx = ppos.x - m.root.position.x;
+    const dpz = ppos.z - m.root.position.z;
+    const pdist = Math.hypot(dpx, dpz) || 0.0001;
+
+    // --- decidir si te ataca (suave: como mucho MAX_ATTACKERS y de uno en uno) ---
+    if (playerDead || onFire) {
+      m.aggro = false;
+    } else if (m.aggro) {
+      if (pdist > DEAGGRO_RADIUS) m.aggro = false;
+    } else if (attackers < MAX_ATTACKERS && pdist < AGGRO_RADIUS &&
+               m.atkCd <= 0 && Math.random() < dt * 0.4) {
+      m.aggro = true; attackers++;
+    }
+
+    // --- animación de golpe en curso ---
+    if (m.atkAnim > 0) animateNpcAttack(m, dt);
 
     let walking = false;
-    if (dist < 0.6) {
-      m.target = randomFloorPoint();        // ha llegado -> nuevo destino
+    if (m.aggro) {
+      m.root.rotation.set(0, Math.atan2(dpx, dpz), 0);     // siempre te mira
+      const reach = NPC_WEAPONS[m.weapon].reach;
+      if (m.atkAnim > 0) {
+        // quieto mientras descarga el golpe
+      } else if (pdist > reach * 0.85) {
+        const nx = dpx / pdist, nz = dpz / pdist;          // acercarse
+        m.root.position.x += nx * NPC_SPEED * 1.2 * dt;
+        m.root.position.z += nz * NPC_SPEED * 1.2 * dt;
+        walking = true;
+      } else if (m.atkCd <= 0) {
+        startNpcAttack(m);                                 // ¡a por ti!
+      }
     } else {
-      const nx = dx / dist, nz = dz / dist;
-      m.root.position.x += nx * NPC_SPEED * dt;
-      m.root.position.z += nz * NPC_SPEED * dt;
-      m.root.rotation.set(0, Math.atan2(nx, nz), 0);   // mira hacia donde anda
-      walking = true;
+      // deambular tranquilo (comportamiento original)
+      if (!m.target) m.target = randomFloorPoint();
+      else {
+        const dx = m.target.x - m.root.position.x;
+        const dz = m.target.z - m.root.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.6) m.target = randomFloorPoint();
+        else {
+          const nx = dx / dist, nz = dz / dist;
+          m.root.position.x += nx * NPC_SPEED * dt;
+          m.root.position.z += nz * NPC_SPEED * dt;
+          m.root.rotation.set(0, Math.atan2(nx, nz), 0);
+          walking = true;
+        }
+      }
     }
 
     groundMonigote(m);
 
-    // --- animación de andar (balanceo de piernas y brazos opuestos) ---
-    const sw = walking ? 0.55 : 0;
-    m.phase += dt * 8;
-    const s = Math.sin(m.phase) * sw;
-    m.legL.rotation.x =  s;
-    m.legR.rotation.x = -s;
-    m.armL.rotation.x = -s;
-    m.armR.rotation.x =  s;
-    if (walking) m.root.position.y += Math.abs(Math.sin(m.phase)) * 0.02;  // botecito al andar
+    // animación de andar (si no está golpeando)
+    if (m.atkAnim <= 0) {
+      const sw = walking ? 0.55 : 0;
+      m.phase += dt * 8;
+      const s = Math.sin(m.phase) * sw;
+      m.legL.rotation.x =  s;
+      m.legR.rotation.x = -s;
+      m.armL.rotation.x = -s;
+      m.armR.rotation.x =  s;
+      if (walking) m.root.position.y += Math.abs(Math.sin(m.phase)) * 0.02;  // botecito al andar
+    }
   }
+}
+
+// Coloca la barra de vida sobre la cabeza; solo visible si está herido
+function updateHpBar(m) {
+  const bar = m.hpBar; if (!bar) return;
+  if (m.state === 'dead' || m.immortal || m.hp >= m.maxHp) { bar.sprite.visible = false; return; }
+  bar.sprite.visible = true;
+  m.head.getWorldPosition(headTmp);
+  bar.sprite.position.set(headTmp.x, headTmp.y + 0.42, headTmp.z);
+}
+
+// El monigote levanta el brazo y, al bajarlo, te golpea si sigues en alcance
+function startNpcAttack(m) {
+  m.atkAnim = NPC_WEAPONS[m.weapon].wind + 0.22;
+  m.struck = false;
+}
+function animateNpcAttack(m, dt) {
+  m.atkAnim -= dt;
+  const w = NPC_WEAPONS[m.weapon];
+  const total = w.wind + 0.22;
+  const elapsed = total - m.atkAnim;
+  let ang;
+  if (elapsed < w.wind) ang = -2.2 * (elapsed / w.wind);                    // sube el brazo
+  else ang = -2.2 + 2.9 * Math.min(1, (elapsed - w.wind) / 0.12);          // lo baja de golpe
+  m.armR.rotation.x = ang;
+
+  if (!m.struck && elapsed >= w.wind) {
+    m.struck = true;
+    const dx = camera.position.x - m.root.position.x;
+    const dz = camera.position.z - m.root.position.z;
+    if (!playerDead && Math.hypot(dx, dz) <= w.reach + 0.4) {
+      damagePlayer(w.dmg, m);
+      if (m.weapon === 'whip') sfxWhip(); else sfxThud();
+    }
+    m.atkCd = w.cd + Math.random() * 1.2;
+  }
+  if (m.atkAnim <= 0) m.armR.rotation.x = 0;
 }
 
 // Derrumbe natural: gira hasta tumbarse (en la dirección aleatoria elegida) y baja al suelo
@@ -424,32 +573,249 @@ function setLimb(g, s, t, e) {
   g.rotation.z = s.z + (t.z - s.z) * e;
 }
 
-// ---------- Ataque (w = 'punch' clic izq. | 'whip' clic dcho.) ----------
-function attack(w) {
-  const reach = w === 'whip' ? WHIP_REACH : PUNCH_REACH;
-  const dmg   = w === 'whip' ? 2 : 1;                  // látigo mata de 1, puño de 2
-  if (w === 'whip') sfxWhip(); else sfxPunch();        // sonido del arma (siempre)
+// ════════════════════════════════════════════════════════════════
+//  ARSENAL DEL JUGADOR  (puño · látigo · escopeta · cohetes · granadas)
+// ════════════════════════════════════════════════════════════════
+function selectWeapon(w) {
+  if (!WEAPONS[w]) return;
+  currentWeapon = w;
+  refreshWeaponStrip();
+  const fb = document.getElementById('bFire');
+  if (fb) fb.textContent = WEAPONS[w].icon;
+}
+
+function fire() {
+  if (!isActive() || playerDead) return;
+  const w = currentWeapon, def = WEAPONS[w];
+  if ((weaponCd[w] || 0) > 0) return;        // aún recargando
+  weaponCd[w] = def.cd;
+  if (def.kind === 'melee') meleeAttack(w, def);
+  else if (def.kind === 'shotgun') shotgunAttack(def);
+  else spawnProjectile(def.kind, def);       // rocket | grenade
+}
+
+// Resta vida a un monigote; si llega a 0 lo derriba
+function damageMonigote(m, dmg) {
+  if (!m || m.state !== 'walk' || m.immortal) return;
+  m.hp -= dmg;
+  if (m.hpBar) m.hpBar.draw(m.hp / m.maxHp);
+  sfxScream();
+  if (m.hp <= 0) startDeath(m);
+}
+
+function meleeAttack(w, def) {
+  if (w === 'whip') sfxWhip(); else sfxPunch();
   rayPunch.setFromCamera({ x: 0, y: 0 }, camera);
-  rayPunch.far = reach;
+  rayPunch.far = def.reach;
   const hits = rayPunch.intersectObjects(hitMeshes, false);
   const fwd = camera.getWorldDirection(new THREE.Vector3());
-
   if (w === 'whip') {
     const target = hits.length ? hits[0].point.clone()
-                               : camera.position.clone().addScaledVector(fwd, reach);
+                               : camera.position.clone().addScaledVector(fwd, def.reach);
     showWhip(target);
   }
-
   if (!hits.length) return;
-  const m = hits[0].object.userData.owner;
-  if (!m) return;
-  spawnBlood(hits[0].point);            // SANGRE siempre (esté de pie o ya en el suelo)
-  if (m.state === 'walk' && !m.immortal) {
-    sfxScream();                        // grito de dolor
-    m.hp -= dmg;
-    if (m.hp <= 0) startDeath(m);
+  const m = hits[0].object.userData.owner; if (!m) return;
+  spawnBlood(hits[0].point);
+  damageMonigote(m, def.dmg);
+}
+
+function shotgunAttack(def) {
+  sfxShotgun();
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  const rgt = new THREE.Vector3().crossVectors(fwd, upV).normalize();
+  const upW = new THREE.Vector3().crossVectors(rgt, fwd).normalize();
+  const acc = new Map();                       // daño acumulado por monigote
+  for (let p = 0; p < def.pellets; p++) {
+    const dir = fwd.clone()
+      .addScaledVector(rgt, (Math.random() - 0.5) * 0.18)
+      .addScaledVector(upW, (Math.random() - 0.5) * 0.18).normalize();
+    rayPunch.set(camera.position, dir); rayPunch.far = def.reach;
+    const hit = rayPunch.intersectObjects(hitMeshes, false)[0];
+    if (hit && hit.object.userData.owner) {
+      acc.set(hit.object.userData.owner, (acc.get(hit.object.userData.owner) || 0) + def.dmg);
+      spawnBlood(hit.point);
+    }
+  }
+  spawnExplosionFx(camera.position.clone().addScaledVector(fwd, 0.6), 0.55, 0xfff0b0);  // fogonazo
+  for (const [m, dmg] of acc) damageMonigote(m, dmg);
+}
+
+function spawnProjectile(kind, def) {
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  const mesh = new THREE.Mesh(
+    kind === 'rocket' ? new THREE.CylinderGeometry(0.05, 0.05, 0.34, 8)
+                      : new THREE.SphereGeometry(0.09, 8, 6),
+    new THREE.MeshStandardMaterial({
+      color: kind === 'rocket' ? 0x992222 : 0x3a4a26,
+      emissive: kind === 'rocket' ? 0x551111 : 0x000000, roughness: 0.7 }));
+  if (kind === 'rocket') { mesh.quaternion.copy(camera.quaternion); mesh.rotateX(Math.PI / 2); }
+  mesh.position.copy(camera.position).addScaledVector(fwd, 0.5);
+  scene.add(mesh);
+  const vel = fwd.clone().multiplyScalar(kind === 'rocket' ? 26 : 13);
+  if (kind === 'grenade') vel.y += 4.5;        // arco
+  if (kind === 'rocket') sfxRocket(); else sfxThrow();
+  projectiles.push({ kind, mesh, vel, def, life: kind === 'rocket' ? 3.5 : 2.2, fuse: kind === 'grenade' ? 1.6 : 0 });
+}
+
+function updateProjectiles(dt) {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const pr = projectiles[i];
+    pr.life -= dt;
+    if (pr.kind === 'grenade') { pr.vel.y -= 12 * dt; pr.fuse -= dt; }
+
+    const step = pr.vel.clone().multiplyScalar(dt);
+    const moveLen = step.length();
+
+    let wallHit = null;
+    if (moveLen > 0.0001) {
+      rayWall.set(pr.mesh.position, step.clone().normalize());
+      rayWall.far = moveLen + 0.1;
+      wallHit = rayWall.intersectObjects(collidables, false)[0] || null;
+    }
+    let near = null;
+    for (const m of monigotes) {
+      if (m.state !== 'walk') continue;
+      _pv.copy(m.root.position); _pv.y += 0.7;
+      if (_pv.distanceTo(pr.mesh.position) < 0.65) { near = m; break; }
+    }
+
+    if (pr.kind === 'rocket') {
+      if (wallHit || near || pr.life <= 0) {
+        explode(wallHit ? wallHit.point : pr.mesh.position, pr.def.splash, pr.def.dmg, 0xff7a1e);
+        scene.remove(pr.mesh); projectiles.splice(i, 1); continue;
+      }
+    } else { // granada
+      if (near || pr.fuse <= 0 || pr.life <= 0) {
+        explode(pr.mesh.position, pr.def.splash, pr.def.dmg, 0xffb020);
+        scene.remove(pr.mesh); projectiles.splice(i, 1); continue;
+      }
+    }
+
+    pr.mesh.position.add(step);
+    if (pr.kind === 'grenade') {
+      pr.mesh.rotation.x += dt * 6;
+      // no atravesar el suelo: rebote suave
+      rayFloor.set(new THREE.Vector3(pr.mesh.position.x, pr.mesh.position.y + 1, pr.mesh.position.z), down);
+      rayFloor.far = 1000;
+      const fh = rayFloor.intersectObjects(collidables, false)[0];
+      if (fh && pr.mesh.position.y < fh.point.y + 0.09) {
+        pr.mesh.position.y = fh.point.y + 0.09;
+        pr.vel.y = Math.abs(pr.vel.y) * 0.35;
+        pr.vel.x *= 0.6; pr.vel.z *= 0.6;
+      }
+    }
   }
 }
+
+function explode(pos, radius, dmg, color) {
+  sfxExplosion();
+  spawnExplosionFx(pos, radius, color);
+  for (const m of monigotes) {
+    if (m.state !== 'walk' || m.immortal) continue;
+    _pv.copy(m.root.position); _pv.y += 0.7;
+    const d = _pv.distanceTo(pos);
+    if (d <= radius) { damageMonigote(m, dmg * (1 - 0.6 * d / radius)); spawnBlood(_pv.clone()); }
+  }
+  // ¡cuidado con tus propias explosiones si estás cerca!
+  const pd = camera.position.distanceTo(pos);
+  if (pd <= radius && !playerDead) damagePlayer(Math.round(dmg * (1 - pd / radius) * 0.35), { name: 'tu propia explosión' });
+}
+
+function spawnExplosionFx(pos, radius, color) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  mesh.position.copy(pos); mesh.scale.setScalar(0.3);
+  scene.add(mesh);
+  explosions.push({ mesh, t: 0, max: 0.45, radius: Math.max(1, radius) });
+}
+function updateExplosions(dt) {
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const e = explosions[i]; e.t += dt;
+    const p = e.t / e.max;
+    e.mesh.scale.setScalar(0.3 + p * e.radius);
+    e.mesh.material.opacity = 0.9 * (1 - p);
+    if (p >= 1) { scene.remove(e.mesh); explosions.splice(i, 1); }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  VIDA DEL JUGADOR / MUERTE / REAPARICIÓN
+// ════════════════════════════════════════════════════════════════
+function updatePlayerHud() {
+  const fill = document.getElementById('hpFill');
+  const label = document.getElementById('hpLabel');
+  const f = Math.max(0, playerHP) / PLAYER_HP_MAX;
+  if (fill) { fill.style.width = (f * 100) + '%'; fill.style.background = f > 0.5 ? '#5bd75b' : f > 0.22 ? '#e8c14a' : '#e0584a'; }
+  if (label) label.textContent = 'VIDA ' + Math.max(0, Math.round(playerHP));
+}
+let _flashT = 0;
+function flashDamage() {
+  const el = document.getElementById('damageFlash');
+  if (el) { el.style.opacity = '1'; _flashT = 0.12; }
+}
+function damagePlayer(amount, src, flash = true) {
+  if (playerDead) return;
+  playerHP = Math.max(0, playerHP - amount);
+  updatePlayerHud();
+  if (flash) flashDamage();
+  if (playerHP <= 0) playerDie(src);
+}
+function playerDie(src) {
+  if (playerDead) return;
+  playerDead = true;
+  const sub = document.getElementById('deadSub');
+  if (sub) sub.textContent = (src === 'fire') ? 'Te ha consumido el incendio 🔥'
+    : (src && src.name) ? (src.name + ' te ha rematado') : 'Te han dado de baja';
+  document.getElementById('dead').classList.add('show');
+  if (controls.isLocked) controls.unlock();
+}
+function respawn() {
+  playerDead = false; playerHP = PLAYER_HP_MAX; updatePlayerHud();
+  extinguishFire();
+  for (const m of monigotes) reviveMonigote(m);
+  const p = randomFloorPoint();
+  if (p) camera.position.set(p.x, p.y + EYE_HEIGHT, p.z);
+  document.getElementById('dead').classList.remove('show');
+}
+function reviveMonigote(m) {
+  m.state = 'walk'; m.hp = m.maxHp; m.aggro = false; m.atkAnim = 0; m.struck = false;
+  m.atkCd = 1 + Math.random() * 3;
+  m.root.quaternion.identity();
+  m.root.rotation.set(0, Math.random() * 6.28, 0);
+  m.armL.rotation.set(0, 0, 0); m.armR.rotation.set(0, 0, 0);
+  m.legL.rotation.set(0, 0, 0); m.legR.rotation.set(0, 0, 0);
+  const p = randomFloorPoint(); if (p) m.root.position.copy(p);
+  groundMonigote(m);
+  if (m.hpBar) { m.hpBar.draw(1); m.hpBar.sprite.visible = false; }
+  if (m.key === 'alvaro') {
+    m.immortal = false; m.cigBurn = 0;
+    if (m.cigStick) { m.cigStick.visible = true; m.cigStick.scale.y = 1; m.cigStick.position.z = 0.3;
+      m.cigEmber.visible = true; m.cigEmber.position.z = 0.62; }
+  }
+}
+
+// Barra de armas (se construye automáticamente desde WEAPONS)
+const weaponStripEl = document.getElementById('weaponStrip');
+const weaponChips = {};
+function refreshWeaponStrip() {
+  for (const w in weaponChips) weaponChips[w].classList.toggle('sel', w === currentWeapon);
+}
+function buildWeaponStrip() {
+  if (!weaponStripEl) return;
+  WEAPON_ORDER.forEach((w, idx) => {
+    const def = WEAPONS[w];
+    const chip = document.createElement('div');
+    chip.className = 'wchip';
+    chip.innerHTML = '<span class="wi">' + def.icon + '</span><span class="wn">' + def.name + '</span><span class="wk">' + (idx + 1) + '</span>';
+    chip.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); selectWeapon(w); });
+    weaponStripEl.appendChild(chip);
+    weaponChips[w] = chip;
+  });
+}
+buildWeaponStrip();
+selectWeapon('punch');
+updatePlayerHud();
 
 // Inicia el derrumbe con dirección y posturas ALEATORIAS
 function startDeath(m) {
@@ -577,14 +943,66 @@ function sfxScream(delay = 0) {
   const nb = ctx.createBufferSource(); nb.buffer = noise(0.7);
   const ng = ctx.createGain(); ng.gain.value = 0.06; nb.connect(ng); ng.connect(f2); nb.start(t); nb.stop(t + 0.7);
 }
+// Escopeta: estallido de ruido grave + golpe
+function sfxShotgun() {
+  ensureAudio(); if (!audioCtx) return; const ctx = audioCtx, t = ctx.currentTime;
+  const nb = ctx.createBufferSource(); nb.buffer = noise(0.25);
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(2400, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.2);
+  const g = ctx.createGain(); g.gain.setValueAtTime(1.0, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  nb.connect(lp).connect(g).connect(ctx.destination); nb.start(t); nb.stop(t + 0.25);
+  const o = ctx.createOscillator(); o.type = 'square';
+  o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+  const og = ctx.createGain(); og.gain.setValueAtTime(0.5, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  o.connect(og).connect(ctx.destination); o.start(t); o.stop(t + 0.15);
+}
+// Disparo de cohete: silbido con bandpass
+function sfxRocket() {
+  ensureAudio(); if (!audioCtx) return; const ctx = audioCtx, t = ctx.currentTime;
+  const nb = ctx.createBufferSource(); nb.buffer = noise(0.4);
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1000; bp.Q.value = 0.8;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  nb.connect(bp).connect(g).connect(ctx.destination); nb.start(t); nb.stop(t + 0.4);
+}
+// Explosión: ruido grave + sub-bajo descendente
+function sfxExplosion() {
+  ensureAudio(); if (!audioCtx) return; const ctx = audioCtx, t = ctx.currentTime;
+  const nb = ctx.createBufferSource(); nb.buffer = noise(0.6);
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1200, t); lp.frequency.exponentialRampToValueAtTime(120, t + 0.5);
+  const g = ctx.createGain(); g.gain.setValueAtTime(1.0, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+  nb.connect(lp).connect(g).connect(ctx.destination); nb.start(t); nb.stop(t + 0.6);
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.4);
+  const og = ctx.createGain(); og.gain.setValueAtTime(0.9, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+  o.connect(og).connect(ctx.destination); o.start(t); o.stop(t + 0.45);
+}
+// Lanzar granada: "whoosh" corto
+function sfxThrow() {
+  ensureAudio(); if (!audioCtx) return; const ctx = audioCtx, t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(170, t + 0.18);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.2);
+}
+// Golpe sordo (impacto de monigote sobre el jugador)
+function sfxThud() {
+  ensureAudio(); if (!audioCtx) return; const ctx = audioCtx, t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(155, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.12);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.18);
+}
 
 // ---------- Incendio: cuando muere Álvaro toda la sala se incendia ----------
 let onFire = false;
+let _origBg = null, _origFog = null;
 const flames = [];
 function startFire() {
   if (onFire) return;
   onFire = true;
-  showToast('🔥 ¡Álvaro ha caído! La sala arde y muere todo el mundo...');
+  _origBg = scene.background; _origFog = scene.fog;   // para poder apagarlo luego
+  showToast('🔥 ¡Álvaro ha caído! La sala arde... ¡corre o morirás!');
   scene.background = new THREE.Color(0x200800);
   scene.fog = new THREE.FogExp2(0x4a1500, 0.05);
   const b = worldBounds;
@@ -609,6 +1027,7 @@ function startFire() {
 }
 function updateFire(dt, t) {
   if (!onFire) return;
+  if (!playerDead) damagePlayer(dt * 45, 'fire', false);   // el incendio TAMBIÉN te mata (~2 s)
   for (const f of flames) {
     const s = 0.65 + 0.5 * Math.abs(Math.sin(t * f.speed + f.phase));
     f.mesh.scale.set(1, s, 1);
@@ -616,6 +1035,14 @@ function updateFire(dt, t) {
     f.mesh.material.opacity = 0.55 + 0.35 * Math.sin(t * f.speed * 1.2 + f.phase);
     f.mesh.rotation.y += dt * 2.5;
   }
+}
+function extinguishFire() {
+  if (!onFire) return;                  // no había incendio: no tocar fondo/niebla
+  onFire = false;
+  for (const f of flames) scene.remove(f.mesh);
+  flames.length = 0;
+  scene.background = _origBg;
+  scene.fog = _origFog;
 }
 
 // ---------- Sangre: gotas que saltan, caen y SE QUEDAN como mancha en el suelo ----------
@@ -709,7 +1136,7 @@ let toastT = 0;
 function showToast(msg) { if (!toastEl) return; toastEl.textContent = msg; toastEl.style.opacity = '1'; toastT = 4.5; }
 
 function updateHud() {
-  hud.innerHTML = '👊 Clic izq. = puño (2 golpes) &nbsp;|&nbsp; 🔴 Clic dcho. = látigo (1 golpe) &nbsp;|&nbsp; <b>Esc</b> soltar';
+  hud.innerHTML = '🔫 Clic = disparar &nbsp;|&nbsp; <b>1–5</b> / rueda = cambiar arma &nbsp;|&nbsp; <b>Esc</b> soltar';
 }
 
 // ---------- Estado de los controles táctiles ----------
@@ -729,6 +1156,7 @@ function startMobile() {
   // partir de la orientación actual de la cámara para no dar un salto
   lookEuler.setFromQuaternion(camera.quaternion, 'YXZ');
   yaw = lookEuler.y; pitch = lookEuler.x;
+  updatePlayerHud(); selectWeapon(currentWeapon);
 }
 
 // En escritorio: clic bloquea el ratón. En móvil: arranca el modo táctil.
@@ -736,20 +1164,45 @@ overlay.addEventListener('click', () => {
   ensureAudio();
   if (IS_TOUCH) startMobile(); else controls.lock();
 });
-controls.addEventListener('lock', () => { overlay.classList.add('hidden'); cross.style.display = 'block'; hud.style.display = 'block'; updateHud(); });
-controls.addEventListener('unlock', () => { overlay.classList.remove('hidden'); cross.style.display = 'none'; hud.style.display = 'none'; });
+controls.addEventListener('lock', () => {
+  overlay.classList.add('hidden'); cross.style.display = 'block'; hud.style.display = 'block';
+  document.body.classList.add('playing');
+  updateHud(); updatePlayerHud(); selectWeapon(currentWeapon);
+});
+controls.addEventListener('unlock', () => {
+  cross.style.display = 'none'; hud.style.display = 'none';
+  if (playerDead) return;                 // la pantalla de muerte gestiona su propia salida
+  overlay.classList.remove('hidden');
+  document.body.classList.remove('playing');
+});
 
-// Clic izquierdo = puño · Clic derecho = látigo (solo ratón, con el ratón bloqueado)
+// Clic (izq. o dcho.) = disparar el arma seleccionada (con el ratón bloqueado)
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (!controls.isLocked) return;
-  if (e.button === 0) attack('punch');
-  else if (e.button === 2) attack('whip');
+  if (e.button === 0 || e.button === 2) fire();
 });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());  // sin menú con clic dcho.
 
 const keys = {};
-addEventListener('keydown', (e) => { keys[e.code] = true; });
-addEventListener('keyup',   (e) => { keys[e.code] = false; });
+addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code.startsWith('Digit')) {        // 1–5: cambiar de arma
+    const n = parseInt(e.code.slice(5), 10);
+    if (n >= 1 && n <= WEAPON_ORDER.length) selectWeapon(WEAPON_ORDER[n - 1]);
+  }
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+addEventListener('wheel', (e) => {         // rueda del ratón: cambiar de arma
+  if (!isActive()) return;
+  const i = WEAPON_ORDER.indexOf(currentWeapon);
+  const n = (i + (e.deltaY > 0 ? 1 : -1) + WEAPON_ORDER.length) % WEAPON_ORDER.length;
+  selectWeapon(WEAPON_ORDER[n]);
+}, { passive: true });
+document.getElementById('respawnBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  respawn();
+  if (!IS_TOUCH) controls.lock();
+});
 
 // ════════════════════════════════════════════════════════════════
 //  CABLEADO DE CONTROLES TÁCTILES  (solo en dispositivos táctiles)
@@ -817,8 +1270,7 @@ if (IS_TOUCH) {
     el.addEventListener('pointerdown', (e) => { e.preventDefault(); set(true); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, () => set(false)));
   };
-  tap('bPunch', () => { if (mobileActive) attack('punch'); });
-  tap('bWhip',  () => { if (mobileActive) attack('whip'); });
+  tap('bFire', () => { if (mobileActive) fire(); });
   hold('bUp',   v => touchUp = v);
   hold('bDown', v => touchDown = v);
   const runBtn = document.getElementById('bRun');
@@ -834,7 +1286,7 @@ const right = new THREE.Vector3();
 const upV = new THREE.Vector3(0, 1, 0);
 
 function movePlayer(dt) {
-  if (!isActive()) return;
+  if (!isActive() || playerDead) return;
   const pos = camera.position;
 
   // dirección de la cámara en horizontal
@@ -898,9 +1350,13 @@ function animate() {
   const t = clock.elapsedTime;
   movePlayer(dt);
   if (monigotes.length) updateMonigotes(dt, t);
+  updateProjectiles(dt);
+  updateExplosions(dt);
   updateBlood(dt);
   updateWhip(dt);
   updateFire(dt, t);
+  for (const w in weaponCd) if (weaponCd[w] > 0) weaponCd[w] = Math.max(0, weaponCd[w] - dt);
+  if (_flashT > 0) { _flashT -= dt; if (_flashT <= 0) { const df = document.getElementById('damageFlash'); if (df) df.style.opacity = '0'; } }
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.style.opacity = '0'; }
   renderer.render(scene, camera);
 }
