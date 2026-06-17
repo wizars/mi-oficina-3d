@@ -4,6 +4,11 @@ Un mini-juego web hecho con **Three.js**: te paseas en primera persona por una
 recreación 3D de la oficina (escaneada con LiDAR de un iPhone) y por ella deambulan
 **monigotes estilo Minecraft** con las caras de los compañeros.
 
+## 🌐 Jugar online (GitHub Pages)
+
+- 🏢 **Mi Oficina 3D** → https://wizars.github.io/mi-oficina-3d/
+- 🏎️ **Autopista Infinita** (racer con los mismos compañeros, **jugable en móvil**) → https://wizars.github.io/mi-oficina-3d/autopista.html
+
 ## ▶️ Cómo ejecutarlo
 
 Requiere **Node.js** instalado.
