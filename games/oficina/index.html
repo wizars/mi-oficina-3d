@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Mi Oficina 3D</title>
-  <link rel="stylesheet" href="styles/oficina.css?v=1" />
+  <link rel="stylesheet" href="styles/oficina.css?v=2" />
 </head>
 <body>
   <div id="app"></div>
@@ -12,6 +12,18 @@
   <div id="hud">👊 Puño — 2 puñetazos · pulsa <b style="font-family:monospace">Esc</b> para soltar el ratón</div>
 
   <div id="toast"></div>
+
+  <!-- Barra de armas (arriba) y vida del jugador (abajo) -->
+  <div id="weaponStrip"></div>
+  <div id="playerHud"><div id="hpLabel">VIDA 100</div><div id="hpBar"><div id="hpFill"></div></div></div>
+  <div id="damageFlash"></div>
+
+  <!-- Pantalla de muerte -->
+  <div id="dead"><div class="dpanel">
+    <h1>☠ Has muerto</h1>
+    <div class="dsub" id="deadSub"></div>
+    <span id="respawnBtn">↻ Reaparecer</span>
+  </div></div>
 
   <!-- Controles táctiles (solo móvil) -->
   <div id="mobileUI">
@@ -22,8 +34,7 @@
       <div class="msbtn" id="bDown">⬇️</div>
     </div>
     <div id="actions">
-      <div class="mbtn" id="bPunch">👊</div>
-      <div class="mbtn" id="bWhip">🔴</div>
+      <div class="mbtn" id="bFire">👊</div>
     </div>
   </div>
 
@@ -62,6 +73,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=17"></script>
+  <script type="module" src="app.js?v=18"></script>
 </body>
 </html>
