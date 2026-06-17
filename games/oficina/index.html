@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Mi Oficina 3D</title>
+  <link rel="stylesheet" href="styles/oficina.css?v=2" />
+</head>
+<body>
+  <div id="app"></div>
+  <div id="cross"></div>
+  <div id="hud">👊 Puño — 2 puñetazos · pulsa <b style="font-family:monospace">Esc</b> para soltar el ratón</div>
+
+  <div id="toast"></div>
+
+  <!-- Barra de armas (arriba) y vida del jugador (abajo) -->
+  <div id="weaponStrip"></div>
+  <div id="playerHud"><div id="hpLabel">VIDA 100</div><div id="hpBar"><div id="hpFill"></div></div></div>
+  <div id="damageFlash"></div>
+
+  <!-- Pantalla de muerte -->
+  <div id="dead"><div class="dpanel">
+    <h1>☠ Has muerto</h1>
+    <div class="dsub" id="deadSub"></div>
+    <span id="respawnBtn">↻ Reaparecer</span>
+  </div></div>
+
+  <!-- Controles táctiles (solo móvil) -->
+  <div id="mobileUI">
+    <div id="joy"><div id="joyNub"></div></div>
+    <div id="msec">
+      <div class="msbtn" id="bRun">🏃 Correr</div>
+      <div class="msbtn" id="bUp">⬆️</div>
+      <div class="msbtn" id="bDown">⬇️</div>
+    </div>
+    <div id="actions">
+      <div class="mbtn" id="bFire">👊</div>
+    </div>
+  </div>
+
+  <div id="loading">Cargando tu oficina… <div id="bar"><i></i></div></div>
+
+  <div id="overlay">
+    <div id="panel">
+      <a class="back" href="../../">‹ Juegos</a>
+      <h1>🏢 Mi Oficina 3D</h1>
+      <div class="sub">Una recreación de tu oficina escaneada, con monigotes paseando.</div>
+      <div class="keys kb-keys">
+        <b>W A S D</b><span>Moverte</span>
+        <b>Ratón</b><span>Mirar alrededor</span>
+        <b>Clic izq.</b><span>👊 Puño (mata en 2 golpes)</span>
+        <b>Clic dcho.</b><span>🔴 Látigo (mata en 1 golpe)</span>
+        <b>Shift</b><span>Correr</span>
+        <b>Espacio</b><span>Subir &nbsp;/&nbsp; <b>Ctrl</b> Bajar</span>
+        <b>Esc</b><span>Soltar el ratón</span>
+      </div>
+      <div class="keys touch-keys">
+        <b>Joystick</b><span>Moverte (abajo izq.)</span>
+        <b>Arrastra</b><span>Mirar alrededor</span>
+        <b>👊</b><span>Puño (mata en 2 golpes)</span>
+        <b>🔴</b><span>Látigo (mata en 1 golpe)</span>
+        <b>🏃</b><span>Correr &nbsp;·&nbsp; ⬆️ ⬇️ subir / bajar</span>
+      </div>
+      <span class="go">▶ Toca / clic para entrar</span>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="app.js?v=18"></script>
+</body>
+</html>
