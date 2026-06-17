@@ -5,20 +5,20 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { CARAS } from './caras.js';
+import { CARAS } from './data/caras.js';
 
 const CHAR_KEYS = Object.keys(CARAS);   // las 8 personas con su foto
 
 // --- Las 8 teselas del escaneo (están en la carpeta scan/) ---
 const TILES = [
-  'scan/126E308F5DDC43049CE196DF1B74B592_mesh.fbx',
-  'scan/17C59C94A0DD49E08686E2002F485E41_mesh.fbx',
-  'scan/982236C0D8914000AB105568A6E3A2D8_mesh.fbx',
-  'scan/9D86821F55BC4D3ABE2FC6AD70EA354E_mesh.fbx',
-  'scan/ABFEF4CCF8F246B6B41F711380A653D0_mesh.fbx',
-  'scan/DFDEAAC487934C69B137D5016692D433_mesh.fbx',
-  'scan/E9D3E9B5E801458CA6CAEEC0BF123251_mesh.fbx',
-  'scan/F13795B862F34834939F3E70CCF740BE_mesh.fbx',
+  'assets/models/126E308F5DDC43049CE196DF1B74B592_mesh.fbx',
+  'assets/models/17C59C94A0DD49E08686E2002F485E41_mesh.fbx',
+  'assets/models/982236C0D8914000AB105568A6E3A2D8_mesh.fbx',
+  'assets/models/9D86821F55BC4D3ABE2FC6AD70EA354E_mesh.fbx',
+  'assets/models/ABFEF4CCF8F246B6B41F711380A653D0_mesh.fbx',
+  'assets/models/DFDEAAC487934C69B137D5016692D433_mesh.fbx',
+  'assets/models/E9D3E9B5E801458CA6CAEEC0BF123251_mesh.fbx',
+  'assets/models/F13795B862F34834939F3E70CCF740BE_mesh.fbx',
 ];
 
 const TARGET_WIDTH = 17.5;   // ancho real de tu oficina en metros (para fijar la escala)
@@ -313,9 +313,9 @@ function spawnMonigote(i) {
       new THREE.MeshStandardMaterial({ color: 0xb3271e, roughness: 1, flatShading: true }));
     band.position.y = 0.225; head.add(band);
   }
-  if (key === 'rauli') addChestLogo(root, 'racing.png', 0.26, 0.30);    // escudo del Racing
-  if (key === 'jorge') addChestLogo(root, 'guinness.png', 0.32, 0.20);  // logo de Guinness
-  if (key === 'raul')  addChestLogo(root, 'arekson.png', 0.34, 0.20);   // logo de arekson group
+  if (key === 'rauli') addChestLogo(root, 'assets/images/logos/racing.png', 0.26, 0.30);    // escudo del Racing
+  if (key === 'jorge') addChestLogo(root, 'assets/images/logos/guinness.png', 0.32, 0.20);  // logo de Guinness
+  if (key === 'raul')  addChestLogo(root, 'assets/images/logos/arekson.png', 0.34, 0.20);   // logo de arekson group
 
   const m = {
     root, legL, legR, armL, armR, head, key,
@@ -490,9 +490,9 @@ function loadSamples() {
   if (samplesTried || !audioCtx) return;
   samplesTried = true;
   const want = {
-    punch:  ['punch.ogg', 'punch.mp3', 'punch.wav'],
-    whip:   ['whip.ogg', 'whip.mp3', 'whip.wav'],
-    scream: ['scream.ogg', 'scream.mp3', 'scream.wav'],
+    punch:  ['assets/audio/punch.ogg', 'assets/audio/punch.mp3', 'assets/audio/punch.wav'],
+    whip:   ['assets/audio/whip.ogg', 'assets/audio/whip.mp3', 'assets/audio/whip.wav'],
+    scream: ['assets/audio/scream.ogg', 'assets/audio/scream.mp3', 'assets/audio/scream.wav'],
   };
   for (const name in want) tryLoad(name, want[name], 0);
 }

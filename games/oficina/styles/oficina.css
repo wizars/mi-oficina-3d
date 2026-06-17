@@ -1,0 +1,74 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #15171c; font-family: system-ui, "Segoe UI", sans-serif; }
+#app { position: fixed; inset: 0; }
+canvas { display: block; }
+
+/* Cartel de inicio / instrucciones */
+#overlay {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(15,17,22,0.82); color: #fff; text-align: center; cursor: pointer; z-index: 10;
+  transition: opacity .25s;
+}
+#overlay.hidden { opacity: 0; pointer-events: none; }
+#panel { max-width: 460px; padding: 32px 36px; background: #1f2530; border: 1px solid #333c4d; border-radius: 16px; }
+#panel h1 { font-size: 22px; margin-bottom: 6px; }
+#panel .sub { color: #9fb0c9; font-size: 14px; margin-bottom: 20px; }
+#panel .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; text-align: left; font-size: 14px; margin: 0 auto 22px; width: fit-content; }
+#panel .keys b { background:#2c3545; padding:2px 9px; border-radius:6px; color:#cfe0ff; font-family: ui-monospace, monospace; }
+#panel .go { display:inline-block; background:#3b82f6; padding:11px 26px; border-radius:10px; font-weight:600; font-size:15px; }
+#panel .go:hover { background:#2f6fde; }
+#panel .back { display:inline-block; margin-bottom:14px; color:#9fb0c9; font-size:13px; text-decoration:none; }
+#panel .back:hover { color:#cfe0ff; }
+
+/* Mira central */
+#cross { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  background: rgba(255,255,255,.7); border-radius: 50%; z-index: 5; pointer-events: none; display: none; }
+
+/* HUD esquina */
+#hud { position: fixed; left: 12px; bottom: 12px; color: #cfe0ff; font-size: 12px; z-index: 5;
+  background: rgba(20,24,32,.55); padding: 6px 10px; border-radius: 8px; pointer-events: none; display:none; }
+
+/* Barra de carga */
+#loading { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); color:#cfe0ff; z-index: 11;
+  font-size: 13px; background: rgba(20,24,32,.85); padding: 10px 18px; border-radius: 10px; }
+#bar { width: 240px; height: 6px; background:#2c3545; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+#bar > i { display:block; height:100%; width:0%; background:#3b82f6; transition: width .2s; }
+
+/* Aviso emergente (toast) */
+#toast { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 20;
+  background: rgba(20,8,4,.85); color: #ffd9a0; border: 1px solid #ff7a2a; padding: 12px 22px;
+  border-radius: 12px; font-size: 17px; font-weight: 600; opacity: 0; transition: opacity .3s;
+  pointer-events: none; max-width: 80%; text-align: center; }
+
+/* ===== Controles táctiles (móvil) ===== */
+html, body { touch-action: none; -webkit-user-select: none; user-select: none; }
+#mobileUI { position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none; }
+body.touch.playing #mobileUI { display: block; }
+/* Joystick de movimiento (abajo izquierda) */
+#joy { position: absolute; left: max(20px, env(safe-area-inset-left));
+  bottom: max(26px, env(safe-area-inset-bottom)); width: 128px; height: 128px; border-radius: 50%;
+  background: rgba(40,48,64,.32); border: 2px solid rgba(180,200,230,.35);
+  pointer-events: auto; touch-action: none; }
+#joyNub { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px;
+  transform: translate(-50%,-50%); border-radius: 50%;
+  background: rgba(190,205,235,.55); border: 2px solid rgba(255,255,255,.65); }
+/* Botones de ataque (abajo derecha) */
+#actions { position: absolute; right: max(20px, env(safe-area-inset-right));
+  bottom: max(26px, env(safe-area-inset-bottom)); display: flex; gap: 16px; }
+.mbtn { width: 74px; height: 74px; border-radius: 50%; pointer-events: auto; touch-action: none;
+  display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff;
+  background: rgba(40,48,64,.5); border: 2px solid rgba(180,200,230,.45); }
+.mbtn:active { transform: scale(.93); }
+#bPunch { background: rgba(55,90,150,.55); border-color: rgba(140,180,255,.55); }
+#bWhip  { background: rgba(150,45,45,.55); border-color: rgba(255,130,130,.55); }
+/* Botones secundarios (arriba derecha): correr / subir / bajar */
+#msec { position: absolute; right: max(14px, env(safe-area-inset-right));
+  top: max(12px, env(safe-area-inset-top)); display: flex; gap: 10px; }
+.msbtn { pointer-events: auto; touch-action: none; padding: 9px 13px; border-radius: 10px;
+  background: rgba(40,48,64,.55); border: 1px solid rgba(180,200,230,.4); color: #cfe0ff;
+  font-size: 14px; font-weight: 600; }
+.msbtn.on { background: rgba(80,135,210,.85); color: #fff; }
+/* Cartel: alternar instrucciones teclado/táctil */
+.touch-keys { display: none; }
+body.touch .kb-keys { display: none; }
+body.touch .touch-keys { display: grid; }
