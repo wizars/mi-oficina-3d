@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Mi Oficina 3D</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -44,6 +44,39 @@
       background: rgba(20,8,4,.85); color: #ffd9a0; border: 1px solid #ff7a2a; padding: 12px 22px;
       border-radius: 12px; font-size: 17px; font-weight: 600; opacity: 0; transition: opacity .3s;
       pointer-events: none; max-width: 80%; text-align: center; }
+
+    /* ===== Controles táctiles (móvil) ===== */
+    html, body { touch-action: none; -webkit-user-select: none; user-select: none; }
+    #mobileUI { position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none; }
+    body.touch.playing #mobileUI { display: block; }
+    /* Joystick de movimiento (abajo izquierda) */
+    #joy { position: absolute; left: max(20px, env(safe-area-inset-left));
+      bottom: max(26px, env(safe-area-inset-bottom)); width: 128px; height: 128px; border-radius: 50%;
+      background: rgba(40,48,64,.32); border: 2px solid rgba(180,200,230,.35);
+      pointer-events: auto; touch-action: none; }
+    #joyNub { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px;
+      transform: translate(-50%,-50%); border-radius: 50%;
+      background: rgba(190,205,235,.55); border: 2px solid rgba(255,255,255,.65); }
+    /* Botones de ataque (abajo derecha) */
+    #actions { position: absolute; right: max(20px, env(safe-area-inset-right));
+      bottom: max(26px, env(safe-area-inset-bottom)); display: flex; gap: 16px; }
+    .mbtn { width: 74px; height: 74px; border-radius: 50%; pointer-events: auto; touch-action: none;
+      display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff;
+      background: rgba(40,48,64,.5); border: 2px solid rgba(180,200,230,.45); }
+    .mbtn:active { transform: scale(.93); }
+    #bPunch { background: rgba(55,90,150,.55); border-color: rgba(140,180,255,.55); }
+    #bWhip  { background: rgba(150,45,45,.55); border-color: rgba(255,130,130,.55); }
+    /* Botones secundarios (arriba derecha): correr / subir / bajar */
+    #msec { position: absolute; right: max(14px, env(safe-area-inset-right));
+      top: max(12px, env(safe-area-inset-top)); display: flex; gap: 10px; }
+    .msbtn { pointer-events: auto; touch-action: none; padding: 9px 13px; border-radius: 10px;
+      background: rgba(40,48,64,.55); border: 1px solid rgba(180,200,230,.4); color: #cfe0ff;
+      font-size: 14px; font-weight: 600; }
+    .msbtn.on { background: rgba(80,135,210,.85); color: #fff; }
+    /* Cartel: alternar instrucciones teclado/táctil */
+    .touch-keys { display: none; }
+    body.touch .kb-keys { display: none; }
+    body.touch .touch-keys { display: grid; }
   </style>
 </head>
 <body>
@@ -53,13 +86,27 @@
 
   <div id="toast"></div>
 
+  <!-- Controles táctiles (solo móvil) -->
+  <div id="mobileUI">
+    <div id="joy"><div id="joyNub"></div></div>
+    <div id="msec">
+      <div class="msbtn" id="bRun">🏃 Correr</div>
+      <div class="msbtn" id="bUp">⬆️</div>
+      <div class="msbtn" id="bDown">⬇️</div>
+    </div>
+    <div id="actions">
+      <div class="mbtn" id="bPunch">👊</div>
+      <div class="mbtn" id="bWhip">🔴</div>
+    </div>
+  </div>
+
   <div id="loading">Cargando tu oficina… <div id="bar"><i></i></div></div>
 
   <div id="overlay">
     <div id="panel">
       <h1>🏢 Mi Oficina 3D</h1>
       <div class="sub">Una recreación de tu oficina escaneada, con monigotes paseando.</div>
-      <div class="keys">
+      <div class="keys kb-keys">
         <b>W A S D</b><span>Moverte</span>
         <b>Ratón</b><span>Mirar alrededor</span>
         <b>Clic izq.</b><span>👊 Puño (mata en 2 golpes)</span>
@@ -68,7 +115,14 @@
         <b>Espacio</b><span>Subir &nbsp;/&nbsp; <b>Ctrl</b> Bajar</span>
         <b>Esc</b><span>Soltar el ratón</span>
       </div>
-      <span class="go">▶ Clic para entrar</span>
+      <div class="keys touch-keys">
+        <b>Joystick</b><span>Moverte (abajo izq.)</span>
+        <b>Arrastra</b><span>Mirar alrededor</span>
+        <b>👊</b><span>Puño (mata en 2 golpes)</span>
+        <b>🔴</b><span>Látigo (mata en 1 golpe)</span>
+        <b>🏃</b><span>Correr &nbsp;·&nbsp; ⬆️ ⬇️ subir / bajar</span>
+      </div>
+      <span class="go">▶ Toca / clic para entrar</span>
     </div>
   </div>
 
@@ -80,6 +134,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=15"></script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>

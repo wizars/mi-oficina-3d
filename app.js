@@ -35,8 +35,18 @@ scene.background = new THREE.Color(0x10141b);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 1000);
 camera.position.set(0, EYE_HEIGHT, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// ¿dispositivo táctil? (móvil / tablet) → activa los controles táctiles.
+// Conservador: puntero principal grueso, hay táctil, y NO hay ningún ratón
+// (así un portátil táctil con ratón mantiene los controles de escritorio).
+// Se puede forzar con ?touch=1 (o desactivar con ?touch=0) para pruebas.
+const _forceTouch = new URLSearchParams(location.search).get('touch');
+const IS_TOUCH = _forceTouch === '1' ? true : _forceTouch === '0' ? false : (
+  matchMedia('(pointer:coarse)').matches && navigator.maxTouchPoints > 0 && !matchMedia('(any-pointer:fine)').matches
+);
+if (IS_TOUCH) document.body.classList.add('touch');
+
+const renderer = new THREE.WebGLRenderer({ antialias: !IS_TOUCH });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));   // menos resolución en móvil = más fluido
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.getElementById('app').appendChild(renderer.domElement);
@@ -702,11 +712,34 @@ function updateHud() {
   hud.innerHTML = '👊 Clic izq. = puño (2 golpes) &nbsp;|&nbsp; 🔴 Clic dcho. = látigo (1 golpe) &nbsp;|&nbsp; <b>Esc</b> soltar';
 }
 
-overlay.addEventListener('click', () => { ensureAudio(); controls.lock(); });
+// ---------- Estado de los controles táctiles ----------
+let mobileActive = false;                 // true cuando se juega en móvil (sin pointer lock)
+const touchVec = { x: 0, z: 0 };          // joystick: x = derecha, z = adelante  (-1..1)
+let touchRun = false, touchUp = false, touchDown = false;
+const isActive = () => controls.isLocked || mobileActive;   // ¿se mueve/ataca el jugador?
+const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+let yaw = 0, pitch = 0;
+
+function startMobile() {
+  ensureAudio();
+  mobileActive = true;
+  document.body.classList.add('playing');
+  overlay.classList.add('hidden');
+  cross.style.display = 'block';
+  // partir de la orientación actual de la cámara para no dar un salto
+  lookEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+  yaw = lookEuler.y; pitch = lookEuler.x;
+}
+
+// En escritorio: clic bloquea el ratón. En móvil: arranca el modo táctil.
+overlay.addEventListener('click', () => {
+  ensureAudio();
+  if (IS_TOUCH) startMobile(); else controls.lock();
+});
 controls.addEventListener('lock', () => { overlay.classList.add('hidden'); cross.style.display = 'block'; hud.style.display = 'block'; updateHud(); });
 controls.addEventListener('unlock', () => { overlay.classList.remove('hidden'); cross.style.display = 'none'; hud.style.display = 'none'; });
 
-// Clic izquierdo = puño · Clic derecho = látigo
+// Clic izquierdo = puño · Clic derecho = látigo (solo ratón, con el ratón bloqueado)
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (!controls.isLocked) return;
   if (e.button === 0) attack('punch');
@@ -718,12 +751,90 @@ const keys = {};
 addEventListener('keydown', (e) => { keys[e.code] = true; });
 addEventListener('keyup',   (e) => { keys[e.code] = false; });
 
+// ════════════════════════════════════════════════════════════════
+//  CABLEADO DE CONTROLES TÁCTILES  (solo en dispositivos táctiles)
+// ════════════════════════════════════════════════════════════════
+if (IS_TOUCH) {
+  const PITCH_MAX = Math.PI / 2 - 0.05;
+  const LOOK_SENS = 0.0032;
+
+  // --- Mirar: arrastrar un dedo por el lienzo (zona libre de UI) ---
+  const cv = renderer.domElement;
+  let lookId = null, lx = 0, ly = 0;
+  cv.addEventListener('pointerdown', (e) => {
+    if (!mobileActive || lookId !== null) return;
+    lookId = e.pointerId; lx = e.clientX; ly = e.clientY;
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== lookId) return;
+    yaw   -= (e.clientX - lx) * LOOK_SENS;
+    pitch -= (e.clientY - ly) * LOOK_SENS;
+    pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch));
+    lx = e.clientX; ly = e.clientY;
+    lookEuler.set(pitch, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(lookEuler);
+  });
+  const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
+  cv.addEventListener('pointerup', endLook);
+  cv.addEventListener('pointercancel', endLook);
+
+  // --- Joystick de movimiento ---
+  const joy = document.getElementById('joy');
+  const nub = document.getElementById('joyNub');
+  const JOY_R = 46;
+  let joyId = null, jcx = 0, jcy = 0;
+  function moveJoy(px, py) {
+    let dx = px - jcx, dy = py - jcy;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
+    nub.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    touchVec.x =  dx / JOY_R;     // derecha = +
+    touchVec.z = -dy / JOY_R;     // arriba (dy<0) = adelante = +
+  }
+  joy.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    joyId = e.pointerId;
+    const r = joy.getBoundingClientRect();
+    jcx = r.left + r.width / 2; jcy = r.top + r.height / 2;
+    moveJoy(e.clientX, e.clientY);
+  });
+  joy.addEventListener('pointermove', (e) => { if (e.pointerId === joyId) moveJoy(e.clientX, e.clientY); });
+  const endJoy = (e) => {
+    if (e.pointerId !== joyId) return;
+    joyId = null; touchVec.x = 0; touchVec.z = 0;
+    nub.style.transform = 'translate(-50%,-50%)';
+  };
+  joy.addEventListener('pointerup', endJoy);
+  joy.addEventListener('pointercancel', endJoy);
+
+  // --- Botones de acción ---
+  const tap = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+  };
+  const hold = (id, set) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); set(true); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, () => set(false)));
+  };
+  tap('bPunch', () => { if (mobileActive) attack('punch'); });
+  tap('bWhip',  () => { if (mobileActive) attack('whip'); });
+  hold('bUp',   v => touchUp = v);
+  hold('bDown', v => touchDown = v);
+  const runBtn = document.getElementById('bRun');
+  if (runBtn) runBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    touchRun = !touchRun;
+    runBtn.classList.toggle('on', touchRun);
+  });
+}
+
 const fwd = new THREE.Vector3();
 const right = new THREE.Vector3();
 const upV = new THREE.Vector3(0, 1, 0);
 
 function movePlayer(dt) {
-  if (!controls.isLocked) return;
+  if (!isActive()) return;
   const pos = camera.position;
 
   // dirección de la cámara en horizontal
@@ -736,8 +847,10 @@ function movePlayer(dt) {
   if (keys['KeyS']) iz -= 1;
   if (keys['KeyD']) ix += 1;
   if (keys['KeyA']) ix -= 1;
+  // joystick táctil (analógico)
+  if (mobileActive) { ix += touchVec.x; iz += touchVec.z; }
 
-  const speed = (keys['ShiftLeft'] || keys['ShiftRight'] ? RUN_SPEED : WALK_SPEED) * dt;
+  const speed = (keys['ShiftLeft'] || keys['ShiftRight'] || touchRun ? RUN_SPEED : WALK_SPEED) * dt;
 
   if (ix !== 0 || iz !== 0) {
     const dir = new THREE.Vector3()
@@ -750,8 +863,8 @@ function movePlayer(dt) {
   }
 
   // subir / bajar manual (por si te quedas atascado)
-  if (keys['Space'])       pos.y += WALK_SPEED * dt;
-  if (keys['ControlLeft']) pos.y -= WALK_SPEED * dt;
+  if (keys['Space']       || touchUp)   pos.y += WALK_SPEED * dt;
+  if (keys['ControlLeft'] || touchDown) pos.y -= WALK_SPEED * dt;
 
   // seguir el suelo (gravedad sencilla): bajar los ojos a suelo + EYE_HEIGHT
   if (collidables.length) {
