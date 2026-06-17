@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Autopista Infinita — V5</title>
+<link rel="stylesheet" href="styles/autopista.css?v=1" />
+</head>
+<body>
+<div id="game"></div>
+<div id="cabin"><div class="roof"></div><div class="pillar l"></div><div class="pillar r"></div><div class="vign"></div></div>
+<div id="mirror"><canvas id="mirrorCv" width="420" height="183"></canvas></div>
+<div id="tunnelOverlay"></div>
+<canvas id="blood"></canvas><canvas id="glass"></canvas>
+<div id="redflash"></div><div id="whiteflash"></div>
+<div id="fx"></div><div id="pops"></div><div id="banner"></div><div id="combo"></div>
+<div id="heatHud" style="position:fixed;top:2vh;left:50%;transform:translateX(-50%);z-index:5;pointer-events:none;display:flex;gap:4px;opacity:0;transition:opacity .3s">
+  <span class="star" style="font-size:24px;color:#3a4252;text-shadow:0 1px 2px rgba(0,0,0,.5)">★</span>
+  <span class="star" style="font-size:24px;color:#3a4252;text-shadow:0 1px 2px rgba(0,0,0,.5)">★</span>
+  <span class="star" style="font-size:24px;color:#3a4252;text-shadow:0 1px 2px rgba(0,0,0,.5)">★</span>
+</div>
+<div id="muteBtn">🔊</div>
+<div id="pauseBtn">⏸</div>
+<div id="rotate"><div class="ph">📱</div>
+  <div style="font-size:20px;font-weight:800;color:var(--neon)">Gira el dispositivo</div>
+  <div style="font-size:13px;opacity:.8;max-width:280px">Esta autopista se conduce mejor en horizontal 🏎️</div></div>
+
+<div id="hud">
+  <div class="card">
+    <img id="playerCardImg" src="" alt="piloto">
+    <div>
+      <div class="role">Piloto</div>
+      <div class="name" id="playerCardName">—</div>
+      <div id="lives"><div class="hp" id="hp1"></div><div class="hp" id="hp2"></div><div class="hp" id="hp3"></div></div>
+    </div>
+  </div>
+  <div class="gauges">
+    <div class="gauge"><div class="lbl">Nivel</div><div class="val" id="level">1</div></div>
+    <div class="gauge"><div class="lbl">Puntos</div><div class="val" id="score">0</div><div class="sub" id="bestHud" style="color:var(--neon)"></div></div>
+    <div class="gauge"><div class="lbl">Velocidad</div><div class="val" id="speed">0</div><div class="sub">km/h</div></div>
+    <div class="gauge hide-mobile"><div class="lbl">Turbo</div><div id="turbobar"><div id="turbofill"></div></div><div class="sub">W/↑</div></div>
+    <div class="gauge hide-mobile"><div class="lbl">Salto</div><div id="jumpIcon" style="font-size:24px;line-height:1;text-align:center;transition:all .2s">⬆️</div><div class="sub" id="jumpHint">Esp</div></div>
+  </div>
+</div>
+
+<div id="touch">
+  <div class="tgroup tleft"><div class="tbtn" id="btnL">◀</div><div class="tbtn" id="btnR">▶</div></div>
+  <div class="tgroup tright"><div class="tbtn small" id="btnHorn">📯</div><div class="tbtn small" id="btnTurbo">🔥</div><div class="tbtn" id="btnJump">⬆️</div></div>
+</div>
+
+<div class="screen" id="menu">
+  <a href="../../" style="position:absolute;top:max(14px,env(safe-area-inset-top));left:18px;color:#9fb0c7;text-decoration:none;font-size:14px;font-weight:700">‹ Juegos</a>
+  <h1>Autopista Infinita</h1>
+  <p style="font-size:11px;letter-spacing:2px;color:var(--neon);text-transform:uppercase;margin-bottom:-4px">Elige tu piloto</p>
+  <div class="charsel" id="charsel"></div>
+  <p>Curvas, rasantes, túneles y puentes. Esquiva el tráfico rozando para encadenar <b>combos</b>. Bocina a los peatones para que corran. Colecciona boosts y sobrevive al ciclo día/noche.</p>
+  <div class="difsel">
+    <button class="difbtn" data-dif="facil">Fácil</button>
+    <button class="difbtn sel" data-dif="normal">Normal</button>
+    <button class="difbtn" data-dif="dificil">Difícil</button>
+  </div>
+  <div class="keys">
+    <div class="key">◀ ▶ / A D</div><div class="key">W/↑ turbo</div>
+    <div class="key" style="background:rgba(255,210,63,.18);border-color:var(--neon);color:var(--neon)">Espacio <b>SALTO</b></div>
+    <div class="key">H bocina</div><div class="key">P pausa</div><div class="key">M mute</div>
+  </div>
+  <div class="touchkeys">◀ ▶ girar &nbsp;·&nbsp; 🔥 turbo &nbsp;·&nbsp; ⬆️ saltar &nbsp;·&nbsp; 📯 bocina</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
+    <button class="big" id="btnStart">Arrancar</button>
+    <button class="big" id="btnStats" style="background:#343d50;color:#fff;box-shadow:0 5px 0 #1a1f2a,0 12px 26px rgba(0,0,0,.45)">📊 Estadísticas</button>
+  </div>
+  <div style="margin-top:10px;font-size:11px;opacity:.7">
+    Calidad:
+    <button id="btnQuality" style="margin-left:8px;background:transparent;border:1px solid rgba(255,255,255,.3);color:var(--neon);padding:4px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:11px">—</button>
+  </div>
+</div>
+
+<div class="screen hidden" id="stats">
+  <h1 style="font-size:clamp(24px,5vw,42px)">Estadísticas</h1>
+  <div class="stats-grid" id="statsGrid"></div>
+  <p style="font-size:11px;letter-spacing:2px;color:var(--neon);text-transform:uppercase;margin-top:6px">Logros</p>
+  <div class="ach-list" id="achList"></div>
+  <button class="big" id="btnStatsBack" style="background:#343d50;color:#fff;box-shadow:0 5px 0 #1a1f2a,0 12px 26px rgba(0,0,0,.45)">Volver</button>
+</div>
+
+<div class="screen hidden" id="over">
+  <h2>K.O.</h2>
+  <div class="final-score" id="finalScore">0</div>
+  <div class="record" id="recordTxt"></div>
+  <p style="font-size:13px;opacity:.75">Alguien ha venido a explicarte algunas normas de circulación.</p>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
+    <button class="big" id="btnRetry">Volver a salir</button>
+    <button class="big" id="btnMenu" style="background:#343d50;color:#fff;box-shadow:0 5px 0 #1a1f2a,0 12px 26px rgba(0,0,0,.45)">Menú</button>
+  </div>
+</div>
+
+<div class="screen hidden" id="pause">
+  <h2 style="color:var(--neon);text-shadow:none">Pausa</h2>
+  <button class="big" id="btnResume">Continuar</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module" src="app.js?v=2"></script>
+</body>
+</html>
